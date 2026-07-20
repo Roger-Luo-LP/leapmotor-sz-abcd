@@ -4615,6 +4615,9 @@ const rawOrders = [
   ['深圳零跑中心百世汽车城店','C26',1],
 ];
 
+// 统一车型桶为大写（原始数据中存在 'Lafa5' 小写写法），保证与 MODEL_KEYS 完全一致
+rawOrders.forEach(o => { o[1] = String(o[1]).toUpperCase(); });
+
 function total(row) { return MODEL_KEYS.reduce((s,k)=>s+(row[k]||0),0); }
 function pct(v,t) { return t ? ((v/t)*100).toFixed(1)+'%' : '0%'; }
 
