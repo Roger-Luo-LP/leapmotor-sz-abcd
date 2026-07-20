@@ -4625,14 +4625,16 @@ let stackChart, storePctChart;
 let groupBarChart, groupSzChart, groupModelChart, groupLineChart;
 let currentGroupData = [];
 
-function getFilteredStoreData() {
+function getFilteredStoreData(opts) {
+  opts = opts || {};
   const gf = document.getElementById('groupFilter').value;
   const sf = document.getElementById('storeFilter').value;
+  const ignoreStore = !!opts.ignoreStore;
   const orders = rawOrders.filter(o => {
     const store=o[0], mo=o[2];
     if (!selectedMonths.has(mo)) return false;
     if (gf !== 'all' && STORE_GROUP[store][0] !== gf) return false;
-    if (sf !== 'all' && store !== sf) return false;
+    if (!ignoreStore && sf !== 'all' && store !== sf) return false;
     return true;
   });
   const recs = {};
@@ -4640,7 +4642,7 @@ function getFilteredStoreData() {
   orders.forEach(o => { const r=recs[o[0]]; if(r){ r[o[1]]++; r.total++; } });
   let d = Object.values(recs);
   if (gf !== 'all') d = d.filter(r => r.group === gf);
-  if (sf !== 'all') d = d.filter(r => r.name === sf);
+  if (!ignoreStore && sf !== 'all') d = d.filter(r => r.name === sf);
   const grand = d.reduce((s,r)=>s+r.total,0);
   d.forEach(r => { r.internal = grand ? +(r.total/grand*100).toFixed(2) : 0; r.szRatio = r.internal; });
   return d;
@@ -4929,12 +4931,15 @@ function updateCharts() {
   // Metrics
   renderMetrics();
 
-  // 门店简称标签（堆叠图/环形图共用）
+  // 门店简称标签（门店维度图表共用）
   const sLabels = d2.map(r=>STORE_SHORT[r.name]||r.name);
 
-  // Stacked
-  CLASS_KEYS.forEach((k,i)=>{ stackChart.data.datasets[i].data = d2.map(r=>r[k]||0); });
-  stackChart.data.labels = sLabels;
+  // Stacked（各车型销量占比）：不受门店筛选影响，仅受集团/月份筛选
+  const dStack = getFilteredStoreData({ignoreStore:true});
+  const dStack2 = dStack.filter(r=>r.total>0);
+  const stackLabels = dStack2.map(r=>STORE_SHORT[r.name]||r.name);
+  CLASS_KEYS.forEach((k,i)=>{ stackChart.data.datasets[i].data = dStack2.map(r=>r[k]||0); });
+  stackChart.data.labels = stackLabels;
   stackChart.update();
 
   // 各门店车型占比（横向百分比堆积）：每个门店内各车型销量占比归一化和=100%
