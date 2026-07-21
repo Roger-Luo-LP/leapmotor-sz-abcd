@@ -132,6 +132,13 @@ button:hover { background: #534AB7; }
 .rank-group { font-size: 10px; line-height: 1; padding: 2px 5px; border: 1px solid #ccc; border-radius: 6px; color: #888; flex-shrink: 0; white-space: nowrap; }
 .rank-val { font-size: 13px; font-weight: 600; color: #2C2C2A; }
 .rank-empty { font-size: 12px; color: #9a978f; padding: 6px 8px; }
+/* 各基础车型集团占比 饼图网格 */
+.pie-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 4px; }
+.pie-cell { display: flex; flex-direction: column; align-items: center; }
+.pie-cell canvas { max-width: 100%; }
+.pie-title { font-size: 13px; font-weight: 600; color: #2C2C2A; margin-top: 2px; }
+.pie-sub { font-size: 11px; color: #9a978f; margin-top: 2px; }
+@media (max-width: 860px) { .pie-grid { grid-template-columns: repeat(2, 1fr); } }
 </style>
 </head>
 <body>
@@ -210,6 +217,12 @@ button:hover { background: #534AB7; }
       <h3>各车型占比趋势</h3>
       <div class="chart-wrap"><canvas id="groupLineChart"></canvas></div>
     </div>
+  </div>
+  <div class="chart-card full-width">
+    <h3>各基础车型集团占比（饼图）</h3>
+    <div class="hint">每个饼图对应一个基础车型，展示其销量在三大集团的拆分占比（受月份筛选影响）</div>
+    <div class="legend-bar" id="pieGroupLegend"></div>
+    <div class="pie-grid" id="modelPieGrid"></div>
   </div>
 </div>
 
@@ -4624,6 +4637,7 @@ function pct(v,t) { return t ? ((v/t)*100).toFixed(1)+'%' : '0%'; }
 
 let stackChart, storePctChart;
 let groupBarChart, groupSzChart, groupModelChart, groupLineChart;
+let modelPieCharts = [];
 let currentGroupData = [];
 
 function getFilteredStoreData(opts) {
@@ -4857,7 +4871,102 @@ function initCharts() {
     plugins:[pctLabelPlugin]
   });
 
+  // --- 各基础车型集团占比 饼图（8 个 doughnut，每个车型对应一个，展示其在三大集团的拆分）---
+  buildModelPies();
+
   // --- Heatmap removed ---
+}
+
+// 居中型中心文字插件：在 doughnut 中心显示总数
+const pieCenterPlugin = {
+  id: 'pieCenter',
+  afterDraw(chart) {
+    const tot = chart._centerTot;
+    if (tot === undefined) return;
+    const { ctx, chartArea: { left, right, top, bottom } } = chart;
+    const cx = (left + right) / 2, cy = (top + bottom) / 2;
+    ctx.save();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#2C2C2A';
+    ctx.font = '600 15px sans-serif';
+    ctx.fillText(tot, cx, cy - 6);
+    ctx.fillStyle = '#9a978f';
+    ctx.font = '11px sans-serif';
+    ctx.fillText('总销量', cx, cy + 12);
+    ctx.restore();
+  }
+};
+
+// doughnut 各扇区占比标签（段内居中，段过小不显示，干净风格）
+const piePctPlugin = {
+  id: 'piePct',
+  afterDatasetsDraw(chart) {
+    const ctx = chart.ctx;
+    const meta = chart.getDatasetMeta(0);
+    if (meta.hidden) return;
+    const raws = chart._rawAll || chart.data.datasets[0].data;
+    const sum = raws.reduce((a,b)=>a+b,0);
+    if (!sum) return;
+    meta.data.forEach((arc, bi) => {
+      const val = chart.data.datasets[0].data[bi];
+      if (val == null || val <= 0) return;
+      const pct = val / sum * 100;
+      if (pct < 6) return; // 太小不显示，避免拥挤
+      const ang = (arc.startAngle + arc.endAngle) / 2;
+      const r = (arc.outerRadius + arc.innerRadius) / 2;
+      const cx = arc.x + Math.cos(ang) * r;
+      const cy = arc.y + Math.sin(ang) * r;
+      const bg = chart.data.datasets[0].backgroundColor;
+      const color = Array.isArray(bg) ? bg[bi] : bg;
+      const dark = _lum(color) > 0.62;
+      ctx.save();
+      ctx.fillStyle = dark ? '#2C2C2A' : '#ffffff';
+      ctx.font = '600 11px "Microsoft YaHei",sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(pct.toFixed(0) + '%', cx, cy);
+      ctx.restore();
+    });
+  }
+};
+
+function buildModelPies() {
+  const grid = document.getElementById('modelPieGrid');
+  grid.innerHTML = '';
+  modelPieCharts = [];
+  CLASS_KEYS.forEach((k, mi) => {
+    const cell = document.createElement('div');
+    cell.className = 'pie-cell';
+    const cv = document.createElement('canvas');
+    cv.style.height = '180px';
+    const title = document.createElement('div');
+    title.className = 'pie-title';
+    title.textContent = CLASS_LABELS[mi];
+    const sub = document.createElement('div');
+    sub.className = 'pie-sub';
+    cell.appendChild(cv);
+    cell.appendChild(title);
+    cell.appendChild(sub);
+    grid.appendChild(cell);
+
+    const ch = new Chart(cv, {
+      type: 'doughnut',
+      data: { labels: GROUP_ORDER, datasets: [{ data: [0,0,0], backgroundColor: GROUP_ORDER.map(g=>GROUP_COLORS[g]), borderColor: '#fff', borderWidth: 2, borderRadius: 3 }] },
+      options: { responsive: true, maintainAspectRatio: false, cutout: '55%',
+        plugins: { legend: { display: false },
+          tooltip: { callbacks: {
+            title: ctx => CLASS_LABELS[mi] + ' · ' + ctx[0].label,
+            label: ctx => { const v = ctx.parsed; const raw = ch._rawAll?.[ctx.dataIndex] || 0;
+              const sum = ch._rawAll ? ch._rawAll.reduce((a,b)=>a+b,0) : 0;
+              const pct = sum ? (v/sum*100).toFixed(1) : '0.0';
+              return raw + ' 单 (' + pct + '%)'; }
+          } } }
+      },
+      plugins: [pieCenterPlugin, piePctPlugin]
+    });
+    ch._subEl = sub;
+    modelPieCharts.push(ch);
+  });
+  makeLegend('pieGroupLegend', GROUP_ORDER.map(g=>({label:g, color:GROUP_COLORS[g]})));
 }
 
 function renderRank() {
@@ -5003,6 +5112,19 @@ function updateCharts() {
   groupModelChart.data.labels = CLASS_LABELS;
   groupModelChart.update();
   makeLegend('modelLegend', GROUP_ORDER.map((g,gi)=>({label:g,color:GROUP_COLORS[g]})));
+
+  // 各基础车型集团占比 饼图：每个车型一个 doughnut，展示该车型销量在三大集团的拆分
+  CLASS_KEYS.forEach((k, mi) => {
+    const ch = modelPieCharts[mi];
+    if (!ch) return;
+    const raws = gmRaw[mi]; // 与 GROUP_ORDER 同序
+    const sum = raws.reduce((a,b)=>a+b,0);
+    ch.data.datasets[0].data = raws.slice();
+    ch._rawAll = raws.slice();
+    ch._centerTot = sum;
+    ch._subEl.textContent = '合计 ' + sum + ' 单';
+    ch.update();
+  });
 
   // 各月份车型占比（纵向百分比堆积）：始终显示全部月份，仅关联集团/门店筛选，不受月份筛选器影响
   const gf2 = document.getElementById('groupFilter').value;
