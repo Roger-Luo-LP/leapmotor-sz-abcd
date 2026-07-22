@@ -232,6 +232,7 @@ const MODEL_LABELS = ['A10','2027B系','2025B系','Lafa5','2027C系','2026C系',
 // 仅用于分类展示（车型分布/堆叠/热力/明细表），排除 T03、C01（二者只计入总数，不统计分类）
 const CLASS_KEYS = MODEL_KEYS.filter(k => k !== 'T03' && k !== 'C01');
 const CLASS_LABELS = CLASS_KEYS.map(k => MODEL_LABELS[MODEL_KEYS.indexOf(k)]);
+const CLASS_LABELS_ALL = CLASS_LABELS.concat(['全系']);
 // 车型 -> 所属系（用于排行榜分 ABCD 四列）
 const SERIES_OF = { A10:'A', B27:'B', B25:'B', LAFA5:'B', C27:'C', C26:'C', D19:'D', D99:'D' };
 const GROUP_ORDER = ['新易腾集团','标特集团','九兴集团'];
@@ -4870,7 +4871,7 @@ function initCharts() {
     options:{ indexAxis:'y', responsive:true,maintainAspectRatio:false,
       plugins:{ legend:{display:false},
         tooltip:{ callbacks:{
-          title: ctx => CLASS_LABELS[ctx[0].dataIndex],
+          title: ctx => CLASS_LABELS_ALL[ctx[0].dataIndex],
           label: ctx => { const gi=ctx[0].datasetIndex, mi=ctx[0].dataIndex;
             const raw=(groupModelChart._raw?.[mi]?.[gi])||0;
             const pctv=ctx.dataset.data[mi];
@@ -5026,8 +5027,15 @@ function updateCharts() {
     p[p.length-1] = diff<0 ? 0 : diff;
     return p;
   });
-  GROUP_ORDER.forEach((g,gi)=>{ groupModelChart.data.datasets[gi].data = gmPct.map(p=>p[gi]); });
-  groupModelChart.data.labels = CLASS_LABELS;
+  // 全系行：所有车型按集团汇总，归一化为集团占比
+  const allRaw = GROUP_ORDER.map((g,gi)=> gmRaw.reduce((s,row)=>s+row[gi],0));
+  groupModelChart._raw = gmRaw.concat([allRaw]);
+  const allTot = allRaw.reduce((a,b)=>a+b,0) || 1;
+  const allPct = allRaw.map(v=>+(v/allTot*100).toFixed(2));
+  const allDiff = +(100 - allPct.slice(0,-1).reduce((a,b)=>a+b,0)).toFixed(2);
+  allPct[allPct.length-1] = allDiff<0 ? 0 : allDiff;
+  GROUP_ORDER.forEach((g,gi)=>{ groupModelChart.data.datasets[gi].data = gmPct.map(p=>p[gi]).concat([allPct[gi]]); });
+  groupModelChart.data.labels = CLASS_LABELS_ALL;
   groupModelChart.update();
   makeLegend('modelLegend', GROUP_ORDER.map((g,gi)=>({label:g,color:GROUP_COLORS[g]})));
 
