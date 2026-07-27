@@ -4845,7 +4845,12 @@ function getFilteredStoreData(opts) {
   if (gf !== 'all') d = d.filter(r => r.group === gf);
   if (!ignoreStore && sf !== 'all') d = d.filter(r => r.name === sf);
   const grand = d.reduce((s,r)=>s+r.total,0);
-  d.forEach(r => { r.internal = grand ? +(r.total/grand*100).toFixed(2) : 0; r.szRatio = r.internal; });
+  const gTot = {}; d.forEach(r => { gTot[r.group] = (gTot[r.group]||0) + r.total; });
+  d.forEach(r => {
+    const gt = gTot[r.group] || 1;
+    r.internal = gt ? +(r.total/gt*100).toFixed(2) : 0;        // 集团内占比（占所属集团）
+    r.szRatio  = grand ? +(r.total/grand*100).toFixed(2) : 0;  // 深圳市占比（占全市）
+  });
   return d;
 }
 
@@ -5251,7 +5256,7 @@ function updateCharts() {
 }
 
 function renderTable(data) {
-  const thead = `<tr><th>门店名称</th>${CLASS_KEYS.map(k=>`<th>${CLASS_LABELS[CLASS_KEYS.indexOf(k)]}</th>`).join('')}<th>全量</th><th>销售内占比</th><th>深圳市占比</th></tr>`;
+  const thead = `<tr><th>门店名称</th>${CLASS_KEYS.map(k=>`<th>${CLASS_LABELS[CLASS_KEYS.indexOf(k)]}</th>`).join('')}<th>全量</th><th>集团内占比</th><th>深圳市占比</th></tr>`;
   let rows = '';
 
   // 按 GROUP_ORDER 分组门店
@@ -5290,34 +5295,33 @@ function renderTable(data) {
     // 集团合计行
     if(stores.length){
       const gt = gTotals[g];
-      const gPct = gtAll.total ? +(gt.total/gtAll.total*100).toFixed(1) : 0;
       const szPct = gtAll.total ? +(gt.total/gtAll.total*100).toFixed(1) : 0;
       rows += `<tr class="group-total-row">
         <td>${gt.name}</td>
         ${CLASS_KEYS.map(k=>`<td>${gt[k]}</td>`).join('')}
-        <td><b>${gt.total}</b></td><td>${gPct}%</td><td>${szPct}%</td>
+        <td><b>${gt.total}</b></td><td>100.0%</td><td>${szPct}%</td>
       </tr>`;
     }
   });
 
-  // 小区行
+  // 小区行（跨集团，集团内占比不适用，显示 —；深圳市占比=占全市）
   ['深圳北','深圳南'].forEach(a => {
     const at = aTotals[a];
     if(at.total > 0){
-      const aPct = gtAll.total ? +(at.total/gtAll.total*100).toFixed(1) : 0;
+      const szPct = gtAll.total ? +(at.total/gtAll.total*100).toFixed(1) : 0;
       rows += `<tr class="area-row">
         <td>${a}</td>
         ${CLASS_KEYS.map(k=>`<td>${at[k]}</td>`).join('')}
-        <td><b>${at.total}</b></td><td>${aPct}%</td><td>${aPct}%</td>
+        <td><b>${at.total}</b></td><td>—</td><td>${szPct}%</td>
       </tr>`;
     }
   });
 
-  // 总合计行
+  // 总合计行（全市合计，集团内占比不适用，显示 —）
   rows += `<tr class="grand-total-row">
     <td>${gtAll.name}</td>
     ${CLASS_KEYS.map(k=>`<td>${gtAll[k]}</td>`).join('')}
-    <td><b>${gtAll.total}</b></td><td>100.0%</td><td>100.0%</td>
+    <td><b>${gtAll.total}</b></td><td>—</td><td>100.0%</td>
   </tr>`;
 
   const table = document.getElementById('dataTable');
