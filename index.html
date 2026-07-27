@@ -194,7 +194,7 @@ button:hover { background: #534AB7; }
         <div class="month-bar" id="monthBar"></div>
       </div>
       <div id="weekFilterWrap" style="display:none;">
-        <div class="month-bar" id="weekBar"></div>
+        <select id="weekSelect" onchange="onWeekSelect()" style="max-width:260px;"></select>
       </div>
     </div>
     <button onclick="resetFilters()">重置筛选</button>
@@ -5372,28 +5372,29 @@ function toggleMonth(m, el) {
   updateCharts();
 }
 
-function buildWeekBar() {
-  const bar = document.getElementById('weekBar');
-  bar.innerHTML = WEEKS.map(w=>
-    `<span class="month-chip${selectedWeeks.has(w.key)?' active':''}" onclick="toggleWeek('${w.key}',this)" title="${w.month}月">${w.label}<span class="cnt">${w.count}</span></span>`
+function buildWeekSelect() {
+  const sel = document.getElementById('weekSelect');
+  // 单选：默认选中数据中最新的周（数组按日期排序，末尾即最新）
+  const def = WEEKS.length ? WEEKS[WEEKS.length-1].key : '';
+  sel.innerHTML = WEEKS.map(w=>
+    `<option value="${w.key}">${w.label}（${w.count}单）</option>`
   ).join('');
+  sel.value = def;
+  selectedWeeks = new Set([def]);
 }
-function toggleWeek(k, el) {
-  if(selectedWeeks.has(k)) {
-    if(selectedWeeks.size>1){ selectedWeeks.delete(k); el.classList.remove('active'); }
-    else { return; }
-  } else { selectedWeeks.add(k); el.classList.add('active'); }
+function onWeekSelect() {
+  const v = document.getElementById('weekSelect').value;
+  selectedWeeks = new Set([v]);   // 单选：始终只保留一个周
   updateCharts();
 }
 function onTimeModeChange() {
   const mode = document.getElementById('timeMode').value;
   timeMode = mode;
   if (mode === 'week') {
-    if (selectedWeeks.size === 0) WEEKS.forEach(w => selectedWeeks.add(w.key)); // 初次切到周：默认全选，避免空白
     document.getElementById('monthFilterWrap').style.display='none';
     document.getElementById('weekFilterWrap').style.display='block';
-    document.getElementById('timeModeHint').textContent='可多选周，按周聚合对比（默认全选）';
-    buildWeekBar();
+    document.getElementById('timeModeHint').textContent='单选周，按周查看（默认最新周）';
+    buildWeekSelect();
   } else {
     document.getElementById('monthFilterWrap').style.display='block';
     document.getElementById('weekFilterWrap').style.display='none';
