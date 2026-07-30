@@ -250,6 +250,7 @@ button:hover { background: #534AB7; }
     </div>
     <div class="chart-card">
       <h3>各周度车型占比</h3>
+      <div class="legend-bar" id="weekLegend"></div>
       <div class="chart-wrap"><canvas id="groupLineChart"></canvas></div>
     </div>
   </div>
@@ -5343,6 +5344,7 @@ function updateCharts() {
   CLASS_KEYS.forEach((k,i)=>{ groupLineChart.data.datasets[i].data = weekPct.map(p=>p[i]); });
   groupLineChart.data.labels = targetWeeks.map(k=>wkLabel[k]);
   groupLineChart.update();
+  makeLegend('weekLegend',CLASS_KEYS.map((k,i)=>({label:CLASS_LABELS[i],color:COLORS[k]})));
 
   // Table
   renderTable(d2);
