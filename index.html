@@ -249,7 +249,7 @@ button:hover { background: #534AB7; }
       <div class="chart-wrap"><canvas id="groupSzChart"></canvas></div>
     </div>
     <div class="chart-card">
-      <h3>各车型占比趋势</h3>
+      <h3>各周度车型占比</h3>
       <div class="chart-wrap"><canvas id="groupLineChart"></canvas></div>
     </div>
   </div>
@@ -5090,16 +5090,24 @@ function initCharts() {
     plugins:[pctLabelPlugin]
   });
 
-  // --- Group Line (各车型占比趋势，按月份，不受月份筛选器影响) ---
+  // --- Group Line (各周度车型占比，纵向百分比堆积，默认过往八周，仅联动集团+门店) ---
   groupLineChart = new Chart(document.getElementById('groupLineChart'),{
-    type:'line',
-    data:{ labels:[], datasets:CLASS_KEYS.map((k,i)=>({label:CLASS_LABELS[i],data:[],borderColor:COLORS[k],backgroundColor:COLORS[k],borderWidth:2,tension:.3,pointRadius:2,pointHoverRadius:4})) },
+    type:'bar',
+    data:{ labels:[], datasets:CLASS_KEYS.map((k,i)=>({label:CLASS_LABELS[i],data:[],backgroundColor:COLORS[k],borderRadius:3})) },
     options:{ responsive:true,maintainAspectRatio:false,
-      plugins:{ legend:{display:true,position:'top',labels:{boxWidth:12,font:{size:11},color:'#2C2C2A'}},
-        tooltip:{ callbacks:{ label: ctx => ctx.dataset.label+'：'+(+ctx.parsed.y).toFixed(1)+'%' } } },
-      scales:{ x:{ ticks:{color:'#2C2C2A'} },
-               y:{ beginAtZero:true, max:100, title:{display:true,text:'车型占比 %',color:'#888780'}, ticks:{color:'#888780',callback:v=>v+'%'} } }
-    }
+      plugins:{ legend:{display:false},
+        tooltip:{ callbacks:{
+          title: ctx => ctx[0].label,
+          label: ctx => { const wi=ctx[0].dataIndex, ki=ctx[0].datasetIndex;
+            const raw=(groupLineChart._raw?.[wi]?.[ki])||0;
+            const pctv=ctx.dataset.data[wi];
+            return CLASS_LABELS[ki]+'：'+raw+' 单 ('+pctv.toFixed(1)+'%)'; }
+        } }
+      },
+      scales:{ x:{ stacked:true, ticks:{color:'#2C2C2C'} },
+               y:{ stacked:true, beginAtZero:true, max:100, title:{display:true,text:'车型占比 %',color:'#888780'}, ticks:{color:'#888780',callback:v=>v+'%'} } }
+    },
+    plugins:[pctLabelPlugin]
   });
 
   // --- Group Model (车型×集团 百分比堆积) ---
@@ -5307,8 +5315,33 @@ function updateCharts() {
   groupSzChart.data.labels = months.map(m=>m+'月');
   groupSzChart.update();
   makeLegend('szLegend',CLASS_KEYS.map((k,i)=>({label:CLASS_LABELS[i],color:COLORS[k]})));
-  groupLineChart.data.labels = months.map(m=>m+'月');
-  CLASS_KEYS.forEach((k,i)=>{ groupLineChart.data.datasets[i].data = monthPct.map(p=>p[i]); });
+  // 各周度车型占比（纵向百分比堆积）：默认显示过往八周；周模式下显示所选周。仅联动集团+门店筛选。
+  const useWeekSel = (timeMode === 'week' && selectedWeeks.size > 0);
+  const targetWeeks = useWeekSel
+    ? WEEKS.filter(w => selectedWeeks.has(w.key)).map(w => w.key)
+    : WEEKS.slice(-8).map(w => w.key);
+  const wkLabel = {}; WEEKS.forEach(w => { wkLabel[w.key] = w.label; });
+  const wkIdx = {}; targetWeeks.forEach((k,i)=>{ wkIdx[k]=i; });
+  const weekModel = targetWeeks.map(()=>CLASS_KEYS.map(()=>0));
+  const weekTot = targetWeeks.map(()=>0);
+  rawOrders.forEach(o=>{
+    const store=o[0], b=o[1], wk=weekKey(o[3]);
+    if(gf2!=='all' && STORE_GROUP[store][0]!==gf2) return;
+    if(sf2!=='all' && store!==sf2) return;
+    const wi=wkIdx[wk]; if(wi===undefined) return;
+    const ki=CLASS_KEYS.indexOf(b); if(ki<0) return;
+    weekModel[wi][ki]++; weekTot[wi]++;
+  });
+  groupLineChart._raw = weekModel;
+  const weekPct = weekModel.map((row,wi)=>{
+    const tot=weekTot[wi]||1;
+    const p=row.map(v=>+(v/tot*100).toFixed(2));
+    const diff=+(100-p.slice(0,-1).reduce((a,b)=>a+b,0)).toFixed(2);
+    p[p.length-1]=diff<0?0:diff;
+    return p;
+  });
+  CLASS_KEYS.forEach((k,i)=>{ groupLineChart.data.datasets[i].data = weekPct.map(p=>p[i]); });
+  groupLineChart.data.labels = targetWeeks.map(k=>wkLabel[k]);
   groupLineChart.update();
 
   // Table
