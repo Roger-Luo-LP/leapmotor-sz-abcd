@@ -7179,12 +7179,13 @@ function getFilteredStoreData(opts) {
   let d = Object.values(recs);
   if (gf !== 'all') d = d.filter(r => r.group === gf);
   if (!ignoreStore && sf !== 'all') d = d.filter(r => r.name === sf);
-  const grand = d.reduce((s,r)=>s+r.total,0);
+  // 深圳市占比分母：当前时间筛选下、全部门店（忽略集团/门店筛选）的深圳总销量
+  const grandShenzhen = rawOrders.filter(o => timeMatch(o)).length;
   const gTot = {}; d.forEach(r => { gTot[r.group] = (gTot[r.group]||0) + r.total; });
   d.forEach(r => {
     const gt = gTot[r.group] || 1;
     r.internal = gt ? +(r.total/gt*100).toFixed(2) : 0;        // 集团内占比（占所属集团）
-    r.szRatio  = grand ? +(r.total/grand*100).toFixed(2) : 0;  // 深圳市占比（占全市）
+    r.szRatio  = grandShenzhen ? +(r.total/grandShenzhen*100).toFixed(2) : 0;  // 深圳市占比（占全市总销量）
   });
   return d;
 }
@@ -7518,7 +7519,8 @@ function updateCharts() {
   makeLegend('storePctLegend',CLASS_KEYS.map((k,i)=>({label:CLASS_LABELS[i],color:COLORS[k]})));
 
   // --- Group Charts ---
-  const grandTotal = d2.reduce((s,r)=>s+r.total,0);
+  // 集团维度口径分母统一为深圳全市总销量（时间窗口内、全部门店），避免被集团/门店筛选缩小
+  const grandTotal = rawOrders.filter(o => timeMatch(o)).length;
   const gd = buildGroupRecords(d2, grandTotal);
   // 仅取三个集团，按 新易腾→标特→九兴 顺序；横轴为各集团内车型占比（百分比堆积）
   const gGroups = gd.filter(g => GROUP_ORDER.includes(g.name))
@@ -7650,6 +7652,8 @@ function renderTable(data) {
     gModelTotals[g][b] = (gModelTotals[g][b] || 0) + 1;
     cityModelTotals[b] = (cityModelTotals[b] || 0) + 1;
   });
+  // 深圳市占比统一分母：当前时间筛选下、全部门店的深圳总销量（不受集团/门店筛选影响）
+  const szGrand = rawOrders.filter(o => timeMatch(o)).length;
   const pct = (v, den) => den ? +(v / den * 100).toFixed(1) : 0;
   const cell = (v, p) => `<td>${v}<span class="m-pct">${p}%</span></td>`;
   const cellDash = (v) => `<td>${v}<span class="m-pct dash">—</span></td>`;
@@ -7694,7 +7698,7 @@ function renderTable(data) {
     // 集团合计行：每车型占比 = 该集团该车型 / 深圳市三集团该车型合计（深圳市三集团占比）
     if(stores.length){
       const gt = gTotals[g];
-      const szPct = gtAll.total ? +(gt.total/gtAll.total*100).toFixed(1) : 0;
+      const szPct = szGrand ? +(gt.total/szGrand*100).toFixed(1) : 0;
       rows += `<tr class="group-total-row">
         <td>${gt.name}</td>
         ${CLASS_KEYS.map(k => cell(gt[k], pct(gt[k], cityModelTotals[k]))).join('')}
@@ -7707,7 +7711,7 @@ function renderTable(data) {
   ['深圳北','深圳南'].forEach(a => {
     const at = aTotals[a];
     if(at.total > 0){
-      const szPct = gtAll.total ? +(at.total/gtAll.total*100).toFixed(1) : 0;
+      const szPct = szGrand ? +(at.total/szGrand*100).toFixed(1) : 0;
       rows += `<tr class="area-row">
         <td>${a}</td>
         ${CLASS_KEYS.map(k => cell(at[k], pct(at[k], cityModelTotals[k]))).join('')}
@@ -7720,7 +7724,7 @@ function renderTable(data) {
   rows += `<tr class="grand-total-row">
     <td>${gtAll.name}</td>
     ${CLASS_KEYS.map(k => cellDash(gtAll[k])).join('')}
-    <td><b>${gtAll.total}</b></td><td>—</td><td>100.0%</td>
+    <td><b>${gtAll.total}</b></td><td>—</td><td>${pct(gtAll.total, szGrand)}%</td>
   </tr>`;
 
   const table = document.getElementById('dataTable');
